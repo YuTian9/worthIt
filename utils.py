@@ -4,94 +4,167 @@ def get_monthly_payment(interest_rate, principal, durantion_yrs):
     pymt = principal * (R/(1-(1 + R)**(-N)))
     return pymt
 
+class myLoan(object):
+    def __init__(self, principal, interest_rate, duration_yrs):
+        self._inital_principal = principal
+        self._inital_interest_rate = interest_rate
 
-class myHousePurchase(object):
+        self._remaining_principal = principal
+        self._remaining_n_payments = duration_yrs * 12
+        self._current_interest_rate = interest_rate
+        self._current_monthly_pymt = self.get_monthly_payment(self._current_interest_rate, self._remaining_principal, duration_yrs*12)
 
-    def __init__(self, house_price, hoa, tax_rate, yr_insurance, loan_principal, loan_annual_rate, loan_yrs):
+        self._timeline_table = self._create_timeline_table()
 
-        self.house_price = house_price
-        self.rental = 0
 
-        # simplify it, hoa, tax and insurance don't change
+    def get_monthly_payment(self, interest_rate, principal, n_payments):
+        N = n_payments
+        R = interest_rate * 1.0 / 12
+        pymt = principal * (R / (1 - (1 + R) ** (-N)))
+        return pymt
+
+    def _create_timeline_table(self):
+        return {0: {"remaining_principal": self._remaining_principal,
+                    "this_interest_payment": 0,
+                    "this_principal_payment": 0,
+                    "all_interest_paid": 0,
+                    "all_principal_paid": 0,
+                    "remaining_n_payments": self._remaining_n_payments}}
+
+    def _add_month_timeline(self, nth_month, remaining_principal, this_interest_payment,
+                           this_principal_payment, all_interest_paid, all_principal_paid):
+        self._timeline_table[nth_month] = {
+            "remaining_principal": remaining_principal,
+            "this_interest_payment": this_interest_payment,
+            "this_principal_payment": this_principal_payment,
+            "all_interest_paid": all_interest_paid,
+            "all_principal_paid": all_principal_paid,
+            "remaining_n_payments": self._timeline_table[nth_month-1]["remaining_n_payments"]-1
+        }
+        return
+
+    def _alter_month_timeline(self, nth_month, key, val, option=""):
+        if option == "":
+            return
+        elif option == "replace":
+            self._timeline_table[nth_month][key] = val
+        elif option == "add":
+            self._timeline_table[nth_month][key] += val
+        elif option == "subtract":
+            self._timeline_table[nth_month][key] -= val
+        return
+
+    def make_a_regular_payment(self, nth_month):
+        interest_paid = self._remaining_principal*self._current_interest_rate/12
+        principal_paid = min([self._remaining_principal, self._current_monthly_pymt - interest_paid])
+        self._add_month_timeline(nth_month,
+                                remaining_principal=self._remaining_principal-principal_paid,
+                                this_interest_payment=interest_paid,
+                                this_principal_payment=principal_paid,
+                                all_interest_paid=self._timeline_table[nth_month-1]["all_interest_paid"]+interest_paid,
+                                all_principal_paid=self._timeline_table[nth_month-1]["all_principal_paid"]+principal_paid)
+        self._remaining_principal -= principal_paid
+
+    def make_extra_payment(self, nth_month, amount):
+        self._remaining_principal -= amount
+        self._alter_month_timeline(nth_month, key="remaining_principal", val=self._remaining_principal, option="replace")
+        self._alter_month_timeline(nth_month, key="this_principal_payment", val=amount, option="add")
+        self._alter_month_timeline(nth_month, key="all_principal_paid", val=amount, option="add")
+
+    def refinance(self, rate, remaining_payments):
+        self._current_interest_rate = rate
+        self._remaining_n_payments = remaining_payments
+        self._current_monthly_pymt = self.get_monthly_payment(self._current_interest_rate, self._remaining_principal, self._remaining_n_payments)
+        return
+
+    def get_timeline_table(self):
+        return self._timeline_table
+
+    def get_remaining_principal(self):
+        return self._remaining_principal
+
+    def get_this_month_interest_payment(self, nth_month):
+        return self.get_timeline_table()[nth_month]["this_interest_payment"]
+
+    def get_this_month_principal_payment(self, nth_month):
+        return self.get_timeline_table()[nth_month]["this_principal_payment"]
+
+class myHouse(object):
+    def __init__(self, house_price, hoa, tax_rate, yr_insurance):
+        self._initial_house_price = house_price
         self._hoa = hoa
         self._tax_rate = tax_rate
         self._yr_insurance = yr_insurance
-        self._monthly_hoa = self._hoa
-        self._monthly_tax = self._tax_rate*self._house_price/12
-        self._monthly_insurance = self._yr_insurance/12
 
-        self._loan_principal = loan_principal
-        self._loan_annual_rate = loan_annual_rate
-        self._loan_yrs = loan_yrs
-        self._monthly_payment = self._loan_principal * \
-                                (self._loan_annual_rate/12 / (1 - (1 + self._loan_annual_rate/12)**(-self._loan_yrs * 12)))
+        self._current_house_price = house_price
+        self._current_rent_income = 0
 
-        self.big_map = self.init_big_map()
-        self.loan_left = self._loan_principal
+    def set_current_house_price(self, price):
+        self._current_house_price = price
 
-    def init_big_map(self):
-        return {0: {0: self.get_month_data(0, 0)}}
+    def set_current_rent(self, rent):
+        self._current_rent_income = rent
 
-    def update_house_price(self, new_val): self._house_price = new_val
+    def get_current_rent(self):
+        return self._current_rent_income
 
-    def update_rental(self, new_val): self._rental = new_val
-
-    def monthly_update(self, y, m, house_price=None, rental=None):
-        if house_price:
-            self.update_house_price(house_price)
-        if rental:
-            self.update_rental(rental)
-        self.big_map[y][m] = self.get_month_data(y, m)
-
-    def get_month_data(self, y, m):
-        interest_paid = self.loan_left*self._loan_annual_rate/12
-        principal_paid = self._monthly_payment - interest_paid
-        if y!=0 or m!=0: self.loan_left -= principal_paid
-
-        if y==0 and m==0:
-            ret = {"value": self.house_price, "rental_income": self.rental, "principal_pay": 0, "interest_pay": 0}
+    def get_monthly_cost(self):
+        if self._current_rent_income == 0:
+            return self._hoa + self._tax_rate*self._initial_house_price*1.0/12 + self._yr_insurance*1.0/12
         else:
-            ret = {"value": self.house_price, "rental_income": self.rental, "principal_pay": principal_paid,
-               "interest_pay": interest_paid}
-        return ret
+            return self._hoa + self._tax_rate * self._initial_house_price * 1.0 / 12
 
-    def now_accumulated_principal(self):
-        ret = 0
-        for y, m_dict in self._big_map.items():
-            for m, month_dict in m_dict.items():
-                ret += month_dict["principal_pay"]
-        return ret
+class myInvestment(object):
+    def __init__(self, income_tax_rate, myhouse, myloan):
+        self._income_tax_rate = income_tax_rate
+        self._house = myhouse
+        self._loan = myloan
+        self._assessment_deposits = {0: self._loan._inital_principal}
+        self._costs = {0: 0.0}
+        self._earnings = {0: 0.0}
 
-    def now_accumulated_principal(self):
-        ret = 0
-        for y, m_dict in self._big_map.items():
-            for m, month_dict in m_dict.items():
-                ret += month_dict["principal_pay"]
-        return ret
+    def update_nth_month(self, nth_month, extra_principal_payment=0, rent=0):
+        # make payment
+        self._loan.make_a_regular_payment(nth_month)
+        if extra_principal_payment > 0:
+            self._loan.make_extra_payment(nth_month, extra_principal_payment)
 
+        # receive rent income
+        if rent > 0 and rent != self._house.get_current_rent:
+            self._house.set_current_rent(rent)
 
-    def get_monthly_payment(self, principal, rate, yrs):
+        self._costs[nth_month] = self._house.get_monthly_cost() + self._loan.get_this_month_interest_payment(nth_month)
+        self._earnings[nth_month] = self._house.get_current_rent() + self._loan.get_this_month_interest_payment(nth_month) * self._income_tax_rate
+
+        self._assessment_deposits[nth_month] = self._loan.get_this_month_principal_payment(nth_month)
+
+    def simulate(self, for_n_months, extra_principal_pays={}):
+        current_month = self._get_current_month()
+
+        for i in range(current_month+1, for_n_months+1):
+            self.update_nth_month(i, extra_principal_payment= extra_principal_pays[i] if i in extra_principal_pays else 0, rent = self._house.get_current_rent)
         return
 
-
-class myLoan(object):
-
-    def __init__(self, principal, interest_rate, duration_yrs):
-        self._principal = principal
-        self._interest_rate = interest_rate
-        self._duration_yrs = duration_yrs
-
-        self._remaining_principal = principal
-        self._remaining_yrs = duration_yrs
-        self._current_interest_rate = interest_rate
-        self._current_monthly_pymt = get_monthly_payment(self._current_interest_rate, self._remaining_principal, self._remaining_yrs)
-        self.create_adjustment_table(self._duration_yrs*12)
-
-    def create_adjustment_table(self, num_of_pymt):
-        self._adjustment = {}
-        self._adjustment[0] = {"remaining_principal" : self._remaining_principal,
-                                "current_interest_rate": self._remaining_principal,
-                                ""}
-
-    def alter_interest_rate(self):
+    def refinance(self):
         return
+
+    def _get_current_month(self):
+        return max(self._assessment_deposits.keys())
+
+    def see_my_assessment_deposits(self, nth_month=None):
+        if not nth_month or nth_month not in self._assessment_deposits:
+            return sum(self._assessment_deposits.values())
+        else:
+            return self._assessment_deposits.get(nth_month)
+
+    def see_my_costs(self, nth_month=None):
+        if not nth_month or nth_month not in self._costs:
+            return sum(self._costs.values())
+        else:
+            return self._costs.get(nth_month)
+
+    def see_my_earnings(self, nth_month=None):
+        if not nth_month or nth_month not in self._earnings:
+            return sum(self._earnings.values())
+        else:
+            return self._earnings.get(nth_month)
